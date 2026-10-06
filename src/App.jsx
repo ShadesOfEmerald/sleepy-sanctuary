@@ -5,8 +5,8 @@ import {
 } from 'lucide-react';
 
 // --- CONFIGURATION FOR REMOTE UPDATES ---
-const JSONBIN_BIN_ID = "6ac3ed46ac6210605a168591" //import.meta.env.JSONBIN_BIN_ID
-const JSONBIN_API_KEY = "$2a$10$u1vCSSEvpSoJbiguFWOOZeLWUNFunhnS3JeUb0G0q7.57Ho2IQIPC" //import.meta.env.JSONBIN_API_KEY
+const JSONBIN_BIN_ID = import.meta.env.VITE_JSONBIN_BIN_ID;
+const JSONBIN_API_KEY = import.meta.env.VITE_JSONBIN_API_KEY;
 
 // Pseudo-random generator with seed for true non-repeating natural star distribution
 function seededRandom(seed) {
