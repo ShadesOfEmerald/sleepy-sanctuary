@@ -5,8 +5,8 @@ import {
 } from 'lucide-react';
 
 // --- CONFIGURATION FOR REMOTE UPDATES ---
-const JSONBIN_BIN_ID = import.meta.env.JSONBIN_BIN_ID
-const JSONBIN_API_KEY = import.meta.env.JSONBIN_API_KEY
+const JSONBIN_BIN_ID = "6ac3ed46ac6210605a168591" //import.meta.env.JSONBIN_BIN_ID
+const JSONBIN_API_KEY = "$2a$10$u1vCSSEvpSoJbiguFWOOZeLWUNFunhnS3JeUb0G0q7.57Ho2IQIPC" //import.meta.env.JSONBIN_API_KEY
 
 // Pseudo-random generator with seed for true non-repeating natural star distribution
 function seededRandom(seed) {
@@ -34,7 +34,9 @@ export default function SleepApp() {
 
   // Custom Live Message States
   const [customMessage, setCustomMessage] = useState("Sweet dreams & sleep well baobei <3 I love you so muchh mwuahh");
-
+  const [inputMessage, setInputMessage] = useState("");
+  const [showMsgDrawer, setShowMsgDrawer] = useState(false);
+  
   // Music Player States
   const [musicPlaying, setMusicPlaying] = useState(true);
   
@@ -163,7 +165,7 @@ export default function SleepApp() {
   const getGreeting = () => {
     const hour = currentTime.getHours();
     if (hour >= 4 && hour < 12) return 'Good Morning, sunshine';
-    if (hour >= 12 && hour < 18) return 'Good Afternoon, my Love';
+    if (hour >= 12 && hour < 18) return 'Henyo, my Love';
     return 'Good Night, baby';
   };
 
