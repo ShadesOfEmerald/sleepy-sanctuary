@@ -34,8 +34,6 @@ export default function SleepApp() {
 
   // Custom Live Message States
   const [customMessage, setCustomMessage] = useState("Sweet dreams & sleep well baobei <3 I love you so muchh mwuahh");
-  const [inputMessage, setInputMessage] = useState("");
-  const [showMsgDrawer, setShowMsgDrawer] = useState(false);
   
   // Music Player States
   const [musicPlaying, setMusicPlaying] = useState(true);
@@ -251,14 +249,21 @@ export default function SleepApp() {
   useEffect(() => {
     if (musicAudioRef.current) {
       musicAudioRef.current.volume = Math.min(Math.max(musicVolume / 100, 0), 1);
+      console.log(`[Audio Effect] Volume updated to: ${musicVolume}%`);
     }
   }, [musicVolume]);
 
   useEffect(() => {
+    const trackUrl = musicTracks[currentTrackIndex]?.url;
+    console.log(`[Audio Effect] Initializing track index ${currentTrackIndex}: ${musicTracks[currentTrackIndex]?.title}`);
+    console.log(`[Audio Effect] Loading URL: ${trackUrl}`);
+
     if (!musicAudioRef.current) {
-      musicAudioRef.current = new Audio(musicTracks[currentTrackIndex].url);
-    } else {
-      musicAudioRef.current.src = musicTracks[currentTrackIndex].url;
+      console.log("[Audio Effect] Creating HTML5 Audio instance");
+      musicAudioRef.current = new Audio(trackUrl);
+    } else if (musicAudioRef.current.src !== trackUrl) {
+      console.log(`[Audio Effect] Updating Audio src to: ${trackUrl}`);
+      musicAudioRef.current.src = trackUrl;
     }
 
     const audio = musicAudioRef.current;
@@ -268,18 +273,66 @@ export default function SleepApp() {
       setDuration(audio.duration || 0);
     };
 
+    const handleAudioEnded = () => {
+      console.log("[Audio Event] Track ended -> Triggering next track");
+      handleNextTrack();
+    };
+
+    const handleAudioError = (e) => {
+      console.error("[Audio Error] Source loading failed:", audio.src, e);
+    };
+
     audio.addEventListener('timeupdate', updateProgress);
-    audio.addEventListener('ended', handleNextTrack);
+    audio.addEventListener('ended', handleAudioEnded);
+    audio.addEventListener('error', handleAudioError);
+
+    // Global first-interaction handler to unlock web audio on first tap/click
+    const unlockAndPlay = (event) => {
+      console.log(`[User Interaction] First gesture detected via '${event.type}' -> Unlocking audio`);
+      
+      // Directly play without calling .load() to preserve browser gesture context
+      audio.play()
+        .then(() => {
+          console.log("[User Interaction] Audio unlocked and playing successfully!");
+          setMusicPlaying(true);
+          removeInteractionListeners();
+        })
+        .catch(err => {
+          console.warn("[User Interaction] Play failed on gesture:", err);
+        });
+    };
+
+    const removeInteractionListeners = () => {
+      window.removeEventListener('pointerdown', unlockAndPlay);
+      window.removeEventListener('touchstart', unlockAndPlay);
+      window.removeEventListener('click', unlockAndPlay);
+    };
 
     if (musicPlaying) {
-      audio.play().catch(e => console.log("Music play blocked:", e));
+      console.log("[Audio Effect] Attempting audio.play()...");
+      audio.play()
+        .then(() => {
+          console.log("[Audio Event] Playback started successfully!");
+        })
+        .catch((e) => {
+          console.warn("[Audio Event] Autoplay blocked. Waiting for first touch/click anywhere...", e);
+          window.addEventListener('pointerdown', unlockAndPlay, { once: true });
+          window.addEventListener('touchstart', unlockAndPlay, { once: true });
+          window.addEventListener('click', unlockAndPlay, { once: true });
+        });
     } else {
-      audio.pause();
+      console.log("[Audio Effect] Registering gesture unlock listener for initial tap...");
+      window.addEventListener('pointerdown', unlockAndPlay, { once: true });
+      window.addEventListener('touchstart', unlockAndPlay, { once: true });
+      window.addEventListener('click', unlockAndPlay, { once: true });
     }
 
     return () => {
+      console.log(`[Audio Cleanup] Cleaning up listeners for track ${currentTrackIndex}`);
       audio.removeEventListener('timeupdate', updateProgress);
-      audio.removeEventListener('ended', handleNextTrack);
+      audio.removeEventListener('ended', handleAudioEnded);
+      audio.removeEventListener('error', handleAudioError);
+      removeInteractionListeners();
     };
   }, [currentTrackIndex, musicPlaying]);
 
