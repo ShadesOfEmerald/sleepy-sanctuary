@@ -5,8 +5,20 @@ import {
 } from 'lucide-react';
 
 // --- CONFIGURATION FOR REMOTE UPDATES ---
-const JSONBIN_BIN_ID = import.meta.env.VITE_JSONBIN_BIN_ID;
-const JSONBIN_API_KEY = import.meta.env.VITE_JSONBIN_API_KEY;
+const NPOINT_API = import.meta.env.VITE_NPOINT_API;
+
+// --- EVENT REGISTRY (future use) ---
+// "event" in the JSON can be a string ("none") or an array (["a", "b"]).
+// To add a new event: add a handler here with the same name you use in the JSON.
+// Each handler receives the full JSON payload.
+const EVENT_HANDLERS = {
+  // example: (data) => { ... },
+};
+
+const normalizeEvents = (ev) => {
+  const list = Array.isArray(ev) ? ev : [ev];
+  return list.filter((e) => typeof e === 'string' && e && e !== 'none');
+};
 
 // Pseudo-random generator with seed for true non-repeating natural star distribution
 function seededRandom(seed) {
@@ -41,54 +53,11 @@ export default function SleepApp() {
   // DATA SOURCES
   const R2_DOMAIN = import.meta.env.VITE_R2_DOMAIN || "";
 
-  const musicTracks = [
-    { 
-      title: 'Mreowww its already 2am???', 
-      url: `${R2_DOMAIN}/Peder%20B.%20Helland%20-%20Thursday%20(Rain%20Version)%20_%20Soft%20Piano%20Music%20for%20Sleep%20%26%20Relaxation%20-%20(192%20Kbps).mp3` 
-    },
-    { 
-      title: 'Yours Truly <3', 
-      url: `${R2_DOMAIN}/Deep%20Sleep%20-%20piano%20and%20rain.mp3` 
-    },
-    { 
-      title: 'Cuddling in the Car', 
-      url: `${R2_DOMAIN}/Rainy%20Afternoon%20in%20the%20Car.mp3` 
-    },
-    { 
-      title: 'CAS - Playlist', 
-      url: `${R2_DOMAIN}/CAS%20-%20Late%20Night%20Playlist.mp3` 
-    },
-    { 
-      title: 'Apple Cider', 
-      url: `${R2_DOMAIN}/Relaxing%20Piano%20Music%20with%20Rain.mp3` 
-    },
-    { 
-      title: 'Stargazing with You', 
-      url: `${R2_DOMAIN}/Rain%20and%20Thunder%20behind%20a%20Window.mp3` 
-    },
-    { 
-      title: 'Wifebun and Husbun', 
-      url: `${R2_DOMAIN}/Heavy%20Rain%20%26%20Thunder.mp3` 
-    },
-    { 
-      title: 'Dododo hao bu hao', 
-      url: `${R2_DOMAIN}/Sound%20of%20Rain%20and%20Thunder.mp3` 
-    }
-  ];
+  // Loaded ONCE from the API on first load (never refreshed by the polling)
+  const [musicTracks, setMusicTracks] = useState([]);
+  const tracksLoadedRef = useRef(false);
 
-  const [currentTrackIndex, setCurrentTrackIndex] = useState(() => {
-    const lastPlayed = localStorage.getItem('last_played_track');
-    let availableIndices = musicTracks.map((_, idx) => idx);
-    
-    if (lastPlayed !== null && musicTracks.length > 1) {
-      const lastIndex = parseInt(lastPlayed, 10);
-      availableIndices = availableIndices.filter(i => i !== lastIndex);
-    }
-    
-    const randomIndex = availableIndices[Math.floor(Math.random() * availableIndices.length)];
-    localStorage.setItem('last_played_track', randomIndex.toString());
-    return randomIndex;
-  });
+  const [currentTrackIndex, setCurrentTrackIndex] = useState(0);
 
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -225,15 +194,41 @@ export default function SleepApp() {
 
   // --- AUTOMATIC REMOTE NOTE SYNC ---
   const fetchRemoteNote = async () => {
-    if (!JSONBIN_BIN_ID) return;
+    if (!NPOINT_API) return;
     try {
-      const res = await fetch(`https://api.jsonbin.io/v3/b/${JSONBIN_BIN_ID}/latest`, {
-        headers: JSONBIN_API_KEY ? { 'X-Master-Key': JSONBIN_API_KEY } : {}
-      });
+      const res = await fetch(NPOINT_API);
       const data = await res.json();
-      if (data?.record?.message) {
-        setCustomMessage(data.record.message);
+
+      if (data?.message) {
+        setCustomMessage(data.message);
       }
+
+      // Music tracks: applied only once, so polling never interrupts playback
+      if (!tracksLoadedRef.current && Array.isArray(data?.musicTracks) && data.musicTracks.length > 0) {
+        tracksLoadedRef.current = true;
+        const tracks = data.musicTracks
+          .filter((t) => t?.title && t?.url)
+          .map((t) => ({
+            title: t.title,
+            url: /^https?:\/\//i.test(t.url) ? t.url : `${R2_DOMAIN}${t.url}`
+          }));
+
+        // Same "random, but not the last played" start logic as before
+        const lastPlayed = localStorage.getItem('last_played_track');
+        let availableIndices = tracks.map((_, idx) => idx);
+        if (lastPlayed !== null && tracks.length > 1) {
+          const lastIndex = parseInt(lastPlayed, 10);
+          availableIndices = availableIndices.filter(i => i !== lastIndex);
+        }
+        const randomIndex = availableIndices[Math.floor(Math.random() * availableIndices.length)];
+        localStorage.setItem('last_played_track', randomIndex.toString());
+
+        setCurrentTrackIndex(randomIndex);
+        setMusicTracks(tracks);
+      }
+
+      // Events (future use)
+      normalizeEvents(data?.event).forEach((name) => EVENT_HANDLERS[name]?.(data));
     } catch (e) {
       console.log("Remote note sync failed", e);
     }
@@ -241,8 +236,19 @@ export default function SleepApp() {
 
   useEffect(() => {
     fetchRemoteNote();
-    const interval = setInterval(fetchRemoteNote, 300000); // Polling every 5 minutes
-    return () => clearInterval(interval);
+    const interval = setInterval(fetchRemoteNote, 1800000); // Polling every 30 minutes
+    // If the first load failed, retry every 10s until tracks are in
+    const retry = setInterval(() => {
+      if (tracksLoadedRef.current) clearInterval(retry);
+      else fetchRemoteNote();
+    }, 10000);
+    return () => { clearInterval(interval); clearInterval(retry); };
+  }, []);
+
+  // --- Set Background to Dark Failsafe --- //
+  useEffect(() => {
+    document.documentElement.style.backgroundColor = '#070b19';
+    document.body.style.backgroundColor = '#070b19';
   }, []);
 
   // --- MUSIC PLAYER LOGIC ---
@@ -254,6 +260,7 @@ export default function SleepApp() {
   }, [musicVolume]);
 
   useEffect(() => {
+    if (musicTracks.length === 0) return;
     const trackUrl = musicTracks[currentTrackIndex]?.url;
     console.log(`[Audio Effect] Initializing track index ${currentTrackIndex}: ${musicTracks[currentTrackIndex]?.title}`);
     console.log(`[Audio Effect] Loading URL: ${trackUrl}`);
@@ -334,7 +341,7 @@ export default function SleepApp() {
       audio.removeEventListener('error', handleAudioError);
       removeInteractionListeners();
     };
-  }, [currentTrackIndex, musicPlaying]);
+  }, [currentTrackIndex, musicPlaying, musicTracks]);
 
   const toggleMusicPlay = () => {
     setMusicPlaying(!musicPlaying);
@@ -526,7 +533,7 @@ export default function SleepApp() {
               <div className="flex items-center justify-between px-2 text-indigo-200">
                 <div className="flex items-center gap-2.5 truncate">
                   <Music size={16} className="text-indigo-400 shrink-0" />
-                  <span className="text-xs font-medium truncate">{musicTracks[currentTrackIndex].title}</span>
+                  <span className="text-xs font-medium truncate">{musicTracks[currentTrackIndex]?.title || 'Loading...'}</span>
                 </div>
                 <div className="flex items-center gap-1 text-[11px] text-indigo-300/70 font-medium shrink-0 ml-2">
                   <span>Open</span>
@@ -548,7 +555,7 @@ export default function SleepApp() {
               <div className="flex justify-between items-center">
                 <div className="flex items-center gap-2 text-indigo-300 font-medium text-sm">
                   <Music size={18} />
-                  <span>{musicTracks[currentTrackIndex].title}</span>
+                  <span>{musicTracks[currentTrackIndex]?.title || 'Loading...'}</span>
                 </div>
               </div>
 
