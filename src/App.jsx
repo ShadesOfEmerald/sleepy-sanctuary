@@ -236,7 +236,7 @@ export default function SleepApp() {
 
   useEffect(() => {
     fetchRemoteNote();
-    const interval = setInterval(fetchRemoteNote, 1800000); // Polling every 30 minutes
+    const interval = setInterval(fetchRemoteNote, 300000); // Polling every 5 minutes
     // If the first load failed, retry every 10s until tracks are in
     const retry = setInterval(() => {
       if (tracksLoadedRef.current) clearInterval(retry);
